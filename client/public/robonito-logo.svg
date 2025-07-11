@@ -1,0 +1,27 @@
+<svg width="200" height="60" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+  <!-- Robonito Logo - Stylized version -->
+  <defs>
+    <linearGradient id="robotGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2E5BBA;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#2E5BBA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4A90E2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Robot head/circle -->
+  <circle cx="30" cy="30" r="15" fill="url(#robotGradient)" stroke="#2E5BBA" stroke-width="2"/>
+  
+  <!-- Robot eyes -->
+  <circle cx="26" cy="26" r="2" fill="#34C759"/>
+  <circle cx="34" cy="26" r="2" fill="#34C759"/>
+  
+  <!-- Robot mouth -->
+  <rect x="26" y="32" width="8" height="2" rx="1" fill="#34C759"/>
+  
+  <!-- Text: robonito -->
+  <text x="55" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="url(#textGradient)">robonito</text>
+</svg>

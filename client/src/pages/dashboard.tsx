@@ -162,8 +162,8 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <Accessibility className="h-8 w-8 text-primary mr-3" />
-              <h1 className="text-xl font-bold text-gray-900">AccessiScan</h1>
+              <img src="/robonito-logo.svg" alt="Robonito" className="h-8 mr-3" />
+              <h1 className="text-xl font-bold text-gray-900">Robonito Accessibility Scanner</h1>
             </div>
             <nav className="hidden md:flex space-x-8">
               <a href="#" className="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">
@@ -254,9 +254,9 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-4">
-              <Accessibility className="h-5 w-5 text-primary" />
+              <img src="/robonito-logo.svg" alt="Robonito" className="h-5" />
               <p className="text-sm text-gray-500">
-                © 2024 AccessiScan. Making the web accessible for everyone.
+                © 2024 Robonito. Making the web accessible for everyone.
               </p>
             </div>
             <div className="flex items-center space-x-6 mt-4 md:mt-0">

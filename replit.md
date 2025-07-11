@@ -1,12 +1,21 @@
-# Accessibility Scanner Web Application
+# Robonito Accessibility Scanner Web Application
 
 ## Overview
 
-This is a full-stack web application that scans websites for accessibility issues using WCAG (Web Content Accessibility Guidelines) standards. The application features a React frontend with a Node.js/Express backend, utilizing Puppeteer and Axe-core for automated accessibility testing.
+This is a full-stack web application that scans websites for accessibility issues using WCAG (Web Content Accessibility Guidelines) standards. The application features a React frontend with a Node.js/Express backend, utilizing Puppeteer and Axe-core for automated accessibility testing. The platform is branded as "Robonito Accessibility Scanner" with custom logo and styling.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+
+## Recent Changes
+
+### July 11, 2024
+- **Fixed Browser Launch Issues**: Resolved Chrome/Puppeteer dependency issues by installing required system libraries (glib, gtk3, nss, X11 libraries, alsa-lib)
+- **Updated Branding**: Changed from "AccessiScan" to "Robonito Accessibility Scanner" with custom logo implementation
+- **Enhanced Chrome Configuration**: Added comprehensive Chrome launch arguments for better compatibility in headless environment
+- **Resolved TypeScript Errors**: Fixed storage interface type compatibility issues
+- **Verified Scanning Functionality**: Successfully tested website scanning with real accessibility issue detection
 
 ## System Architecture
 
