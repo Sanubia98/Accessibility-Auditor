@@ -71,30 +71,61 @@ export function ScannerForm({ onScanStart, isScanning }: ScannerFormProps) {
             </div>
           </div>
           
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="level-a"
-                checked={scanLevels.includes("A")}
-                onCheckedChange={(checked) => handleLevelChange("A", checked as boolean)}
-              />
-              <Label htmlFor="level-a" className="text-sm">Level A</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="level-aa"
-                checked={scanLevels.includes("AA")}
-                onCheckedChange={(checked) => handleLevelChange("AA", checked as boolean)}
-              />
-              <Label htmlFor="level-aa" className="text-sm">Level AA</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="level-aaa"
-                checked={scanLevels.includes("AAA")}
-                onCheckedChange={(checked) => handleLevelChange("AAA", checked as boolean)}
-              />
-              <Label htmlFor="level-aaa" className="text-sm">Level AAA</Label>
+          <div>
+            <Label className="text-sm font-medium mb-3 block">WCAG Compliance Levels</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="level-a"
+                    checked={scanLevels.includes("A")}
+                    onCheckedChange={(checked) => handleLevelChange("A", checked as boolean)}
+                  />
+                  <Label htmlFor="level-a" className="text-sm">Level A (Basic)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="level-aa"
+                    checked={scanLevels.includes("AA")}
+                    onCheckedChange={(checked) => handleLevelChange("AA", checked as boolean)}
+                  />
+                  <Label htmlFor="level-aa" className="text-sm">Level AA (Standard)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="level-aaa"
+                    checked={scanLevels.includes("AAA")}
+                    onCheckedChange={(checked) => handleLevelChange("AAA", checked as boolean)}
+                  />
+                  <Label htmlFor="level-aaa" className="text-sm">Level AAA (Enhanced)</Label>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="level-aoda"
+                    checked={scanLevels.includes("AODA")}
+                    onCheckedChange={(checked) => handleLevelChange("AODA", checked as boolean)}
+                  />
+                  <Label htmlFor="level-aoda" className="text-sm">AODA Comprehensive</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="level-cognitive"
+                    checked={scanLevels.includes("COGNITIVE")}
+                    onCheckedChange={(checked) => handleLevelChange("COGNITIVE", checked as boolean)}
+                  />
+                  <Label htmlFor="level-cognitive" className="text-sm">Cognitive & Reading</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="level-multimedia"
+                    checked={scanLevels.includes("MULTIMEDIA")}
+                    onCheckedChange={(checked) => handleLevelChange("MULTIMEDIA", checked as boolean)}
+                  />
+                  <Label htmlFor="level-multimedia" className="text-sm">Multimedia Enhanced</Label>
+                </div>
+              </div>
             </div>
           </div>
         </form>

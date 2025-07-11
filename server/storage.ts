@@ -39,6 +39,10 @@ export class MemStorage implements IStorage {
       criticalIssues: 0,
       majorIssues: 0,
       minorIssues: 0,
+      readingLevel: null,
+      cognitiveScore: null,
+      multimediaScore: null,
+      navigationScore: null,
       createdAt: new Date(),
       completedAt: null,
     };
@@ -71,12 +75,17 @@ export class MemStorage implements IStorage {
       wcagCriteria: insertIssue.wcagCriteria,
       severity: insertIssue.severity,
       category: insertIssue.category,
+      subCategory: insertIssue.subCategory || null,
       title: insertIssue.title,
       description: insertIssue.description,
       element: insertIssue.element || null,
       suggestedFix: insertIssue.suggestedFix || null,
       impact: insertIssue.impact || null,
       helpUrl: insertIssue.helpUrl || null,
+      testingType: insertIssue.testingType || null,
+      readingLevel: insertIssue.readingLevel || null,
+      cognitiveLoad: insertIssue.cognitiveLoad || null,
+      multimediaType: insertIssue.multimediaType || null,
     };
     this.issues.set(id, issue);
     return issue;

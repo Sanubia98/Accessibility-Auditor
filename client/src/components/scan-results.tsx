@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
+import { TrendingUp, AlertTriangle, CheckCircle, Brain, Eye, Volume2, Navigation } from "lucide-react";
 import { type Scan } from "@shared/schema";
 
 interface ScanResultsProps {
@@ -95,6 +95,84 @@ export function ScanResults({ scan, issueCategories }: ScanResultsProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Enhanced Testing Metrics */}
+      {(scan.readingLevel || scan.cognitiveScore || scan.multimediaScore || scan.navigationScore) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {scan.readingLevel && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Reading Level</p>
+                    <p className="text-sm font-semibold text-gray-900">{scan.readingLevel}</p>
+                  </div>
+                  <div className="p-2 bg-purple-50 rounded-full">
+                    <Brain className="text-purple-600 h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {scan.cognitiveScore && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Cognitive Score</p>
+                    <p className="text-lg font-semibold text-gray-900">{scan.cognitiveScore}%</p>
+                  </div>
+                  <div className="p-2 bg-green-50 rounded-full">
+                    <Brain className="text-green-600 h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <Progress value={scan.cognitiveScore || 0} className="h-1" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {scan.multimediaScore && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Multimedia Score</p>
+                    <p className="text-lg font-semibold text-gray-900">{scan.multimediaScore}%</p>
+                  </div>
+                  <div className="p-2 bg-orange-50 rounded-full">
+                    <Volume2 className="text-orange-600 h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <Progress value={scan.multimediaScore || 0} className="h-1" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {scan.navigationScore && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Navigation Score</p>
+                    <p className="text-lg font-semibold text-gray-900">{scan.navigationScore}%</p>
+                  </div>
+                  <div className="p-2 bg-blue-50 rounded-full">
+                    <Navigation className="text-blue-600 h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <Progress value={scan.navigationScore || 0} className="h-1" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Detailed Results */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

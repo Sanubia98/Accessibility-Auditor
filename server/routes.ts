@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { scanner } from "./services/scanner";
+import { advancedScanner } from "./services/advanced-scanner";
 import { reportGenerator } from "./services/report";
 import { insertScanSchema } from "@shared/schema";
 import { z } from "zod";
@@ -50,8 +51,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertScanSchema.parse(req.body);
       const scan = await storage.createScan(validatedData);
       
+      // Determine which scanner to use based on scan levels
+      const useAdvancedScanner = scan.scanLevels.some(level => 
+        ['AAA', 'AODA', 'COGNITIVE', 'MULTIMEDIA'].includes(level)
+      );
+      
       // Start scanning in background
-      scanner.scanWebsite(scan.id).catch(console.error);
+      if (useAdvancedScanner) {
+        advancedScanner.scanWebsiteAdvanced(scan.id).catch(console.error);
+      } else {
+        scanner.scanWebsite(scan.id).catch(console.error);
+      }
       
       res.json(scan);
     } catch (error) {

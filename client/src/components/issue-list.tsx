@@ -86,11 +86,36 @@ export function IssueList({ issues, onExportReport, isExporting }: IssueListProp
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-3 mb-2">
+                    <div className="flex items-center space-x-3 mb-2 flex-wrap">
                       <Badge className={getSeverityColor(issue.severity)}>
                         {issue.severity.charAt(0).toUpperCase() + issue.severity.slice(1)}
                       </Badge>
                       <span className="text-sm text-gray-500">{issue.wcagCriteria}</span>
+                      {issue.subCategory && (
+                        <Badge variant="outline" className="text-xs bg-blue-50">
+                          {issue.subCategory}
+                        </Badge>
+                      )}
+                      {issue.testingType && (
+                        <Badge variant="outline" className="text-xs bg-purple-50">
+                          {issue.testingType}
+                        </Badge>
+                      )}
+                      {issue.readingLevel && (
+                        <Badge variant="outline" className="text-xs bg-green-50">
+                          Reading: {issue.readingLevel}
+                        </Badge>
+                      )}
+                      {issue.cognitiveLoad && (
+                        <Badge variant="outline" className="text-xs bg-orange-50">
+                          Cognitive: {issue.cognitiveLoad}
+                        </Badge>
+                      )}
+                      {issue.multimediaType && (
+                        <Badge variant="outline" className="text-xs bg-red-50">
+                          Media: {issue.multimediaType}
+                        </Badge>
+                      )}
                     </div>
                     <h4 className="text-sm font-medium text-gray-900 mb-1">{issue.title}</h4>
                     <p className="text-sm text-gray-600 mb-3">{issue.description}</p>
