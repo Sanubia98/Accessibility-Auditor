@@ -29,8 +29,9 @@ export class MemStorage implements IStorage {
   async createScan(insertScan: InsertScan): Promise<Scan> {
     const id = this.currentScanId++;
     const scan: Scan = {
-      ...insertScan,
       id,
+      url: insertScan.url,
+      scanLevels: Array.isArray(insertScan.scanLevels) ? insertScan.scanLevels : [],
       status: "pending",
       overallScore: null,
       complianceLevel: null,
@@ -64,7 +65,19 @@ export class MemStorage implements IStorage {
 
   async createIssue(insertIssue: InsertIssue): Promise<Issue> {
     const id = this.currentIssueId++;
-    const issue: Issue = { ...insertIssue, id };
+    const issue: Issue = { 
+      id,
+      scanId: insertIssue.scanId,
+      wcagCriteria: insertIssue.wcagCriteria,
+      severity: insertIssue.severity,
+      category: insertIssue.category,
+      title: insertIssue.title,
+      description: insertIssue.description,
+      element: insertIssue.element || null,
+      suggestedFix: insertIssue.suggestedFix || null,
+      impact: insertIssue.impact || null,
+      helpUrl: insertIssue.helpUrl || null,
+    };
     this.issues.set(id, issue);
     return issue;
   }
@@ -79,10 +92,14 @@ export class MemStorage implements IStorage {
   }
 
   async deleteIssuesByScanId(scanId: number): Promise<void> {
-    for (const [id, issue] of this.issues.entries()) {
+    const idsToDelete: number[] = [];
+    this.issues.forEach((issue, id) => {
       if (issue.scanId === scanId) {
-        this.issues.delete(id);
+        idsToDelete.push(id);
       }
+    });
+    for (const id of idsToDelete) {
+      this.issues.delete(id);
     }
   }
 }

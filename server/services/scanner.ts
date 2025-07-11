@@ -104,7 +104,29 @@ export class AccessibilityScanner {
       // Launch browser
       const browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-extensions',
+          '--no-first-run',
+          '--disable-default-apps',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-audio-output',
+          '--no-audio',
+          '--disable-audio-input',
+          '--disable-audio-support',
+          '--disable-notifications',
+          '--disable-popup-blocking',
+          '--disable-translate',
+          '--disable-sync',
+          '--disable-background-networking',
+          '--disable-features=VizDisplayCompositor',
+        ],
       });
 
       const page = await browser.newPage();
