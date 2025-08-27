@@ -1,18 +1,19 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, serial, integer, boolean, timestamp, jsonb , } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+import { string, z } from "zod";
+import { InferSelectModel, InferInsertModel } from "drizzle-orm";
 
 export const scans = pgTable("scans", {
   id: serial("id").primaryKey(),
   url: text("url").notNull(),
   status: text("status", { enum: ["pending", "scanning", "completed", "failed"] }).notNull().default("pending"),
   overallScore: integer("overall_score"),
-  complianceLevel: text("compliance_level", { enum: ["A", "AA", "AAA", "AODA", "none"] }),
+  complianceLevel: text("compliance_level", { enum: ["A", "AA", "AAA", "AODA","COGNITIVE", "MULTIMEDIA", "none"] }),
   totalIssues: integer("total_issues").default(0),
   criticalIssues: integer("critical_issues").default(0),
   majorIssues: integer("major_issues").default(0),
   minorIssues: integer("minor_issues").default(0),
-  scanLevels: jsonb("scan_levels").$type<string[]>().notNull().default(["A", "AA"]),
+  scanLevels: jsonb("scan_levels").$type<string[]>().notNull().default(["A", "AA" ,"AAA", "AODA", "none"]),
   readingLevel: text("reading_level"),
   cognitiveScore: integer("cognitive_score"),
   multimediaScore: integer("multimedia_score"),
@@ -40,16 +41,42 @@ export const issues = pgTable("issues", {
   multimediaType: text("multimedia_type"),
 });
 
+export const reports = pgTable("reports", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  scanId: integer("scan_id").references(() => scans.id).notNull(),
+  pdfContent: text("pdf_content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull(),
+  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+
 export const insertScanSchema = createInsertSchema(scans).pick({
   url: true,
   scanLevels: true,
+
 });
 
 export const insertIssueSchema = createInsertSchema(issues).omit({
   id: true,
 });
 
+export const insertReportSchema = createInsertSchema(reports).omit({
+scanId: true,userId: true,
+});
+
 export type InsertScan = z.infer<typeof insertScanSchema>;
 export type Scan = typeof scans.$inferSelect;
 export type InsertIssue = z.infer<typeof insertIssueSchema>;
 export type Issue = typeof issues.$inferSelect;
+export type User = InferSelectModel<typeof users>;
+export type InsertUser = InferInsertModel<typeof users>;
+export type Report = InferSelectModel<typeof reports>;
+export type InsertReport = InferInsertModel<typeof reports>;

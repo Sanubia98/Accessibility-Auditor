@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "scan_id" integer[] DEFAULT '{}';

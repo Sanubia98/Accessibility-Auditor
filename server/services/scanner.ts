@@ -2,6 +2,11 @@ import puppeteer from 'puppeteer';
 import { AxePuppeteer } from '@axe-core/puppeteer';
 import { storage } from '../storage';
 import { type Scan, type InsertIssue } from '@shared/schema';
+import{reportGenerator} from './report';
+import db from '../../shared/db';
+import { eq } from "drizzle-orm";
+import { reports } from "@shared/schema";
+
 
 interface AxeResult {
   violations: Array<{
@@ -101,35 +106,37 @@ export class AccessibilityScanner {
       // Update scan status
       await storage.updateScan(scanId, { status: 'scanning' });
 
+      console.log("START", scanId)
       // Launch browser
-      const browser = await puppeteer.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium-browser',
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-extensions',
-          '--no-first-run',
-          '--disable-default-apps',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-audio-output',
-          '--no-audio',
-          '--disable-audio-input',
-          '--disable-audio-support',
-          '--disable-notifications',
-          '--disable-popup-blocking',
-          '--disable-translate',
-          '--disable-sync',
-          '--disable-background-networking',
-          '--disable-features=VizDisplayCompositor',
-        ],
-      });
+      const browser = await puppeteer.launch();
 
+      //    {
+      //   headless: true, // process.env.PUPPETEER_EXECUTABLE_PATH || || '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium-browser',
+      //   executablePath:'C:\Users\Sameer\Downloads\chromium-win64\chrome-win\chrome.exe',
+      //   args: [
+      //     '--no-sandbox',
+      //     '--disable-setuid-sandbox',
+      //     '--disable-dev-shm-usage',
+      //     '--disable-gpu',
+      //     '--disable-web-security',
+      //     '--disable-extensions',
+      //     '--no-first-run',
+      //     '--disable-default-apps',
+      //     '--disable-background-timer-throttling',
+      //     '--disable-backgrounding-occluded-windows',
+      //     '--disable-renderer-backgrounding',
+      //     '--disable-audio-output',
+      //     '--no-audio',
+      //     '--disable-audio-input',
+      //     '--disable-audio-support',
+      //     '--disable-notifications',
+      //     '--disable-popup-blocking',
+      //     '--disable-translate',
+      //     '--disable-sync',
+      //     '--disable-background-networking',
+      //     '--disable-features=VizDisplayCompositor',
+      //   ],
+      // }
       const page = await browser.newPage();
       
       // Navigate to URL
@@ -221,6 +228,8 @@ export class AccessibilityScanner {
         minorIssues: minorCount,
         completedAt: new Date(),
       });
+      
+      
 
     } catch (error) {
       console.error('Scan failed:', error);
@@ -230,7 +239,12 @@ export class AccessibilityScanner {
       });
       throw error;
     }
-  }
-}
+   
+  }}
+
+
+
+  
+
 
 export const scanner = new AccessibilityScanner();

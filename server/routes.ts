@@ -1,11 +1,17 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { getReportsByUserId, storage } from "./storage";
 import { scanner } from "./services/scanner";
 import { advancedScanner } from "./services/advanced-scanner";
 import { reportGenerator } from "./services/report";
-import { insertScanSchema } from "@shared/schema";
+import { insertScanSchema, scans } from "@shared/schema";
 import { z } from "zod";
+import { reports } from "@shared/schema";
+import passport from "passport";
+import db from "@shared/db";
+import { authenticateJWT } from "./authenticateJWT";
+import { and, eq } from "drizzle-orm";
+
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all scans
@@ -50,7 +56,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertScanSchema.parse(req.body);
       const scan = await storage.createScan(validatedData);
-      
       // Determine which scanner to use based on scan levels
       const useAdvancedScanner = scan.scanLevels.some(level => 
         ['AAA', 'AODA', 'COGNITIVE', 'MULTIMEDIA'].includes(level)
@@ -63,8 +68,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         scanner.scanWebsite(scan.id).catch(console.error);
       }
       
-      res.json(scan);
+      const data = res.json(scan);
+      // console.log(data);
+      
+      
     } catch (error) {
+      console.log(error, "this is Err");
+      
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid request data", details: error.errors });
       }
@@ -73,7 +83,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate PDF report
-  app.get("/api/scans/:id/report", async (req, res) => {
+  app.get("/api/scans/:id/report",async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const scan = await storage.getScan(id);
@@ -96,6 +106,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+//   app.get('/api/scans/:id/report', async (req, res) => {
+//   try {
+//     const id = Number(req.params.id);   // <-- this line was missing
+//     if (!id) return res.status(400).json({ error: 'Missing or invalid id' });
+
+//     const pdf = await reportGenerator.generatePDFReport(id);
+//     res.setHeader('Content-Type', 'application/pdf');
+//     res.setHeader(
+//       'Content-Disposition',
+//       `attachment; filename="report-${id}.pdf"`
+//     );
+//     res.send(pdf);
+//   } catch (err) {
+//     console.error('PDF generation error:', err);
+//     res.status(500).json({ error: 'Failed to generate report' });
+//   }
+// });
+
+  //get all reports
+  app.get("/myReports", authenticateJWT, async (req, res)=> {
+      try {
+    const userId = (req as any).user.id; // Get user ID from JW
+    const result = await db
+      .select({
+        scanId: reports.scanId,
+        url: scans.url,
+        createdAt: scans.createdAt,
+        pdfContent: reports.pdfContent, // optional, remove if you don't want base64s here
+      })
+      .from(reports)
+      .innerJoin(scans, eq(scans.id, reports.scanId))
+      .where( eq(reports.userId, userId));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching user reports:", error);
+    res.status(500).json({ message: "Failed to fetch reports" });
+  
+  } })
+
+  app.get("/myReports/:scanId", authenticateJWT, async (req, res) => {
+  const userId = (req as any).user.id;
+  const scanId = parseInt(req.params.scanId);
+
+  if (isNaN(scanId)) {
+    return res.status(400).json({ message: "Invalid scan ID" });
+  }
+
+  try {
+    const report = await db
+      .select({
+        scanId: reports.scanId,
+        url: scans.url,
+        createdAt: scans.createdAt,
+        pdfContent: reports.pdfContent,
+      })
+      .from(reports)
+      .innerJoin(scans, eq(scans.id, reports.scanId))
+      .where(and(eq(reports.userId, userId), eq(reports.scanId, scanId)));
+
+    if (report.length === 0) {
+      return res.status(404).json({ message: "Report not found" });
+    }
+
+    res.json(report[0]);
+  } catch (err) {
+    console.error("Error fetching report:", err);
+    res.status(500).json({ message: "Failed to fetch report" });
+  }
+});
+
+   
   const httpServer = createServer(app);
   return httpServer;
 }
+
+
+

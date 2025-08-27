@@ -3,6 +3,7 @@ import { AxePuppeteer } from '@axe-core/puppeteer';
 import { storage } from '../storage';
 import { type Scan, type InsertIssue } from '@shared/schema';
 
+
 interface ReadingLevelAnalysis {
   level: string;
   score: number;
@@ -75,6 +76,13 @@ export class AdvancedAccessibilityScanner {
     if (tags.includes('cat.tables')) {
       return { category: 'Cognitive & Reading', subCategory: 'Data Tables' };
     }
+    if (tags.includes('cat.time-based-media')) {
+      return { category: 'Multimedia', subCategory: 'Time-Based Media' };
+    }
+    if (tags.includes('cat.language')) {
+      return { category: 'Cognitive & Reading', subCategory: 'Language & Readability' };
+    }
+
     return { category: 'General Compliance', subCategory: 'Other' };
   }
 
@@ -166,77 +174,122 @@ export class AdvancedAccessibilityScanner {
     return 'WCAG 2.1 Enhanced';
   }
 
-  private async analyzeReadingLevel(page: any): Promise<ReadingLevelAnalysis> {
+  // New method to map scan levels to Axe tags
+  private getAxeTags(levels: string[]): string[] {
+    const tagMap: Record<string, string[]> = {
+    'A': ['wcag2a'],
+    'AA': ['wcag2aa'],
+    'AAA': ['wcag2aaa'],
+    'AODA': ['wcag2aa'], // AODA aligns with WCAG AA
+    'COGNITIVE': ['wcag2aaa', 'cat.language'], // Cognitive (e.g., reading level) is AAA, language category
+    'MULTIMEDIA': ['wcag2aa', 'wcag2aaa', 'cat.time-based-media'], // Multimedia criteria in AA/AAA, media category
+  };
+
+  let tags: string[] = [];
+  levels.forEach(level => {
+    if (tagMap[level]) tags = [...tags, ...tagMap[level]];
+  });
+  tags.push('best-practice');
+  return [...new Set(tags)]; 
+}
+
+
+ private async analyzeReadingLevel(page: any): Promise<ReadingLevelAnalysis> {
+  try {
+    // Extract text content in browser context safely
     const textContent = await page.evaluate(() => {
-      // Get main content text, excluding navigation and other non-content elements
-      const mainContent = document.querySelector('main') || document.body;
-      const textNodes = [];
-      
-      // Simple text extraction without TreeWalker
-      const getAllTextNodes = (element) => {
-        const walker = document.createTreeWalker(
-          element,
-          NodeFilter.SHOW_TEXT,
-          null,
-          false
-        );
-        
+      try {
+        const root = document.querySelector("main") || document.body;
+        if (!root) return "";
+
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+        const texts: string[] = [];
+
         let node;
-        const texts = [];
-        while (node = walker.nextNode()) {
-          const parent = node.parentElement;
-          if (parent && 
-              !['SCRIPT', 'STYLE', 'NAV', 'FOOTER', 'HEADER'].includes(parent.tagName) &&
-              node.textContent.trim().length > 0) {
-            texts.push(node.textContent.trim());
+        while ((node = walker.nextNode())) {
+          const parent = (node as Text).parentElement;
+          if (
+            parent &&
+            !["SCRIPT", "STYLE", "NAV", "FOOTER", "HEADER"].includes(parent.tagName)
+          ) {
+            const text = node.textContent?.trim();
+            if (text) texts.push(text);
           }
         }
-        return texts;
-      };
-      
-      const texts = getAllTextNodes(mainContent);
-      return texts.join(' ');
+        return texts.join(" ");
+      } catch {
+        return "";
+      }
     });
 
-    // Simple reading level analysis (Flesch Reading Ease approximation)
-    const sentences = textContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    const words = textContent.split(/\s+/).filter(w => w.length > 0);
-    const syllables = words.reduce((count, word) => count + this.countSyllables(word), 0);
+    // If no content, return default
+    if (!textContent) {
+      return {
+        level: "Unknown",
+        score: 0,
+        recommendations: ["No readable content found"],
+      };
+    }
 
+    // Analyze readability (Node context)
+    const sentences = textContent.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+    const words = textContent.split(/\s+/).filter((w) => w.length > 0);
+
+    if (sentences.length === 0 || words.length === 0) {
+      return {
+        level: "Unknown",
+        score: 0,
+        recommendations: ["No readable sentences found"],
+      };
+    }
+
+    // Count syllables safely
+    const syllables = words.reduce((count, word) => {
+      try {
+        return count + this.countSyllables(word);
+      } catch {
+        return count;
+      }
+    }, 0);
+
+    // Flesch Reading Ease score
     const avgSentenceLength = words.length / sentences.length;
     const avgSyllablesPerWord = syllables / words.length;
-    const fleschScore = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
+    const fleschScore = 206.835 - 1.015 * avgSentenceLength - 84.6 * avgSyllablesPerWord;
 
-    let level = 'Unknown';
-    let recommendations = [];
-
-    if (fleschScore >= 90) {
-      level = 'Very Easy (5th grade)';
-    } else if (fleschScore >= 80) {
-      level = 'Easy (6th grade)';
-    } else if (fleschScore >= 70) {
-      level = 'Fairly Easy (7th grade)';
-    } else if (fleschScore >= 60) {
-      level = 'Standard (8th-9th grade)';
-    } else if (fleschScore >= 50) {
-      level = 'Fairly Difficult (10th-12th grade)';
-      recommendations.push('Consider simplifying sentence structure and vocabulary');
+    // Level classification
+    let level = "Unknown";
+    const recommendations: string[] = [];
+    if (fleschScore >= 90) level = "Very Easy (5th grade)";
+    else if (fleschScore >= 80) level = "Easy (6th grade)";
+    else if (fleschScore >= 70) level = "Fairly Easy (7th grade)";
+    else if (fleschScore >= 60) level = "Standard (8th-9th grade)";
+    else if (fleschScore >= 50) {
+      level = "Fairly Difficult (10th-12th grade)";
+      recommendations.push("Simplify sentence structure and vocabulary");
     } else if (fleschScore >= 30) {
-      level = 'Difficult (College level)';
-      recommendations.push('Text may be too complex for general audiences');
-      recommendations.push('Consider breaking up long sentences');
+      level = "Difficult (College level)";
+      recommendations.push("Text may be too complex for general audiences");
     } else {
-      level = 'Very Difficult (Graduate level)';
-      recommendations.push('Text complexity exceeds recommended levels');
-      recommendations.push('Provide plain language alternatives');
+      level = "Very Difficult (Graduate level)";
+      recommendations.push("Provide plain language alternatives");
     }
 
     return {
       level,
-      score: Math.round(fleschScore),
-      recommendations
+      score: Math.max(0, Math.round(fleschScore)),
+      recommendations,
+    };
+  } catch (err) {
+    console.warn("Reading level analysis failed:", err);
+    return {
+      level: "Unknown",
+      score: 0,
+      recommendations: ["Could not analyze reading level"],
     };
   }
+}
+
 
   private countSyllables(word: string): number {
     word = word.toLowerCase();
@@ -293,7 +346,7 @@ export class AdvancedAccessibilityScanner {
     const elementsPerScreen = cognitiveMetrics.totalElements / Math.max(1, Math.ceil(cognitiveMetrics.totalElements / 50));
     if (elementsPerScreen > 30) {
       issues.push('High element density may cause cognitive overload');
-      score -= 15;
+      score -= 10; //15
     }
 
     if (cognitiveMetrics.linksWithoutContext > 10) {
@@ -303,12 +356,12 @@ export class AdvancedAccessibilityScanner {
 
     if (!cognitiveMetrics.hasHelpText && cognitiveMetrics.formElements > 3) {
       issues.push('Complex forms lack contextual help');
-      score -= 20;
+      score -= 10; //20
     }
 
     if (cognitiveMetrics.hasAutoplay) {
       issues.push('Autoplay content may disrupt focus and concentration');
-      score -= 15;
+      score -= 10; //15
     }
 
     // Check heading structure
@@ -358,11 +411,11 @@ export class AdvancedAccessibilityScanner {
     if (hasVideo) {
       if (mediaMetrics.videosWithCaptions === 0) {
         issues.push('Videos lack captions or subtitles');
-        score -= 30;
+        score -= 15; //30
       }
       if (mediaMetrics.videosWithDescriptions === 0) {
         issues.push('Videos lack audio descriptions');
-        score -= 25;
+        score -= 10; //25
       }
     }
 
@@ -373,7 +426,7 @@ export class AdvancedAccessibilityScanner {
 
     if (!mediaMetrics.hasSignLanguage && (hasVideo || hasAudio)) {
       issues.push('No sign language interpretation available');
-      score -= 20;
+      score -= 10; //20
     }
 
     return {
@@ -435,273 +488,377 @@ export class AdvancedAccessibilityScanner {
     };
   }
 
-  async scanWebsiteAdvanced(scanId: number): Promise<void> {
-    const scan = await storage.getScan(scanId);
-    if (!scan) {
-      throw new Error('Scan not found');
-    }
+async scanWebsiteAdvanced(scanId: number): Promise<void> {
+  const scan = await storage.getScan(scanId);
+  if (!scan) {
+    throw new Error('Scan not found');
+  }
 
-    try {
-      await storage.updateScan(scanId, { status: 'scanning' });
+  let browser;
 
-      const browser = await puppeteer.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium-browser',
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-extensions',
-          '--no-first-run',
-          '--disable-default-apps',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-audio-output',
-          '--no-audio',
-          '--disable-audio-input',
-          '--disable-audio-support',
-          '--disable-notifications',
-          '--disable-popup-blocking',
-          '--disable-translate',
-          '--disable-sync',
-          '--disable-background-networking',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-feature-VizDisplayCompositor',
-          '--disable-ipc-flooding-protection',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-field-trial-config',
-          '--disable-back-forward-cache',
-          '--disable-dev-shm-usage',
-          '--disable-extensions',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--no-zygote',
-          '--single-process',
-          '--disable-logging',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-        ],
-      });
+  try {
+    await storage.updateScan(scanId, { status: 'scanning' });
 
-      const page = await browser.newPage();
-      await page.goto(scan.url, { waitUntil: 'networkidle2', timeout: 30000 });
+    // Launch Puppeteer
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ]
+    });
 
-      // Configure axe-core for comprehensive testing
-      const axeConfig = {
-        tags: [
-          ...scan.scanLevels.map(level => `wcag2${level.toLowerCase()}`),
-          'best-practice'
-        ]
-      };
+    const page = await browser.newPage();
 
-      // Run comprehensive accessibility scan
-      const axe = new AxePuppeteer(page);
-      const results = await axe.configure(axeConfig).analyze();
+    // Ensure page loads completely
+    await page.goto(scan.url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForSelector('body', { timeout: 20000 });
+    // Additional safeguard for JS-heavy pages
+    await page.waitForFunction('document.readyState === "complete"', { timeout: 20000 });
 
-      // Run advanced analysis (simplified for now)
-      const readingLevel = { level: 'Standard (8th-9th grade)', score: 65, recommendations: [] };
-      const cognitive = { score: 85, issues: [], recommendations: [] };
-      const multimedia = { score: 90, hasVideo: false, hasAudio: false, hasSignLanguage: false, hasCaptions: false, hasAudioDescription: false, issues: [] };
-      const navigation = { score: 88, keyboardSupport: true, skipLinks: true, landmarkStructure: true, consistentNavigation: true, issues: [] };
+    // Determine which analyses to run based on levels
+    const levels = scan.scanLevels;
+    const doAODA = levels.includes('AODA');
+    const doCognitive = levels.includes('COGNITIVE') || doAODA;
+    const doMultimedia = levels.includes('MULTIMEDIA') || doAODA;
+    const doNavigation = levels.includes('AAA') || doAODA; // Navigation enhancements in AAA/AODA
 
-      await browser.close();
+    // Configure axe-core
+    // const axeConfig = {
+    //   tags: [
+    //     ...scan.scanLevels.map(level => `wcag2${level.toLowerCase()}`),
+    //     'best-practice'
+    //   ]
+    // };
 
-      // Clear existing issues
-      await storage.deleteIssuesByScanId(scanId);
+    // Axe config with proper tags
+      const axeTags = this.getAxeTags(levels);
+      const axeConfig = { runOnly: { type: 'tag', values: axeTags } };
 
-      const issues: InsertIssue[] = [];
-      let criticalCount = 0;
-      let majorCount = 0;
-      let minorCount = 0;
-
-      // Process standard accessibility violations
-      for (const violation of results.violations) {
-        for (const node of violation.nodes) {
-          const severity = this.mapImpactToSeverity(violation.impact);
-          const { category, subCategory } = this.getEnhancedCategory(violation.tags, violation.id);
-          const wcagCriteria = this.getWcagCriteria(violation.tags, violation.id);
-          const suggestedFix = this.generateAdvancedFix(violation.id, violation.description, category);
-
-          const issue: InsertIssue = {
-            scanId,
-            wcagCriteria,
-            severity,
-            category,
-            subCategory,
-            title: violation.help,
-            description: violation.description,
-            element: node.html,
-            suggestedFix,
-            impact: violation.impact,
-            helpUrl: violation.helpUrl,
-            testingType: 'automated',
-            readingLevel: null,
-            cognitiveLoad: null,
-            multimediaType: null,
-          };
-
-          issues.push(issue);
-
-          switch (severity) {
-            case 'critical': criticalCount++; break;
-            case 'major': majorCount++; break;
-            case 'minor': minorCount++; break;
-          }
+    // Retry Axe in case frame is not ready
+    const runAxe = async () => {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          return await new AxePuppeteer(page).configure(axeConfig).analyze();
+        } catch (err) {
+          console.warn(`Axe attempt ${attempt} failed: ${err.message}`);
+          if (attempt === 2) throw err;
+          await page.waitForTimeout(2000);
         }
       }
+    };
 
-      // Add advanced analysis issues
-      if (readingLevel.score < 60) {
+    const results = await runAxe();
+
+    
+    // const readingLevel = await this.analyzeReadingLevel(page).catch(() => ({
+    //   level: 'Unknown',
+    //   score: 0,
+    //   recommendations: ['Could not analyze reading level']
+    // }));
+
+    // const cognitive = await this.analyzeCognitive(page).catch(() => ({
+    //   score: 0,
+    //   issues: ['Cognitive analysis failed'],
+    //   recommendations: []
+    // }));
+
+    // const multimedia = await this.analyzeMultimedia(page).catch(() => ({
+    //   score: 0,
+    //   hasVideo: false,
+    //   hasAudio: false,
+    //   issues: ['Multimedia analysis failed']
+    // }));
+
+    // const navigation = await this.analyzeNavigation(page).catch(() => ({
+    //   score: 0,
+    //   issues: ['Navigation analysis failed']
+    // }));
+
+    let readingLevel: ReadingLevelAnalysis = { score: 100, level: 'N/A', recommendations: [] };
+      if (doCognitive) {
+      readingLevel = await this.analyzeReadingLevel(page); 
+    }
+
+   let cognitive: CognitiveAnalysis = { score: 100, issues: [], recommendations: [] };
+     if (doCognitive) {
+      cognitive = await this.analyzeCognitive(page); 
+    }
+
+   let multimedia: MultimediaAnalysis = { score: 100, hasVideo: false, hasAudio: false, hasSignLanguage: false, hasCaptions: false, hasAudioDescription: false, issues: [] };
+     if (doMultimedia) {
+      multimedia = await this.analyzeMultimedia(page); 
+    }
+
+  let navigation: NavigationAnalysis = { score: 100, keyboardSupport: true, skipLinks: true, landmarkStructure: true, consistentNavigation: true, issues: [] };
+   if (doNavigation) {
+    navigation = await this.analyzeNavigation(page); 
+  }
+
+    console.log("Reading level", readingLevel);
+    console.log("Cognitive", cognitive);
+    console.log("Multimedia", multimedia);
+    console.log("Navigation", navigation);
+
+    // Close browser early to free memory
+    await browser.close();
+
+    // Clear existing issues before inserting new ones
+    await storage.deleteIssuesByScanId(scanId);
+
+    // --- Processing violations ---
+    const issues: InsertIssue[] = [];
+    let criticalCount = 0, majorCount = 0, minorCount = 0;
+
+    for (const violation of results.violations) {
+      for (const node of violation.nodes) {
+        const severity = this.mapImpactToSeverity(violation.impact);
+        const { category, subCategory } = this.getEnhancedCategory(violation.tags, violation.id);
+        const wcagCriteria = this.getWcagCriteria(violation.tags, violation.id);
+        const suggestedFix = this.generateAdvancedFix(violation.id, violation.description, category);
+
+        issues.push({
+          scanId,
+          wcagCriteria,
+          severity,
+          category,
+          subCategory,
+          title: violation.help,
+          description: violation.description,
+          element: node.html,
+          suggestedFix,
+          impact: violation.impact,
+          helpUrl: violation.helpUrl,
+          testingType: 'automated',
+          readingLevel: null,
+          cognitiveLoad: null,
+          multimediaType: null,
+        });
+
+        if (severity === 'critical') criticalCount++;
+        else if (severity === 'major') majorCount++;
+        else minorCount++;
+      }
+    }
+
+    // --- Advanced analysis based issues ---
+    if (readingLevel.score < 60) {
+      issues.push({
+        scanId,
+        wcagCriteria: 'AODA - Cognitive & Reading Support',
+        severity: 'major',
+        category: 'Cognitive & Reading',
+        subCategory: 'Reading Level',
+        title: 'Content reading level too high',
+        description: `Content reading level (${readingLevel.level}) may be too difficult for general audiences`,
+        element: '<body>',
+        suggestedFix: readingLevel.recommendations.join('. '),
+        impact: 'serious',
+        helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/reading-level.html',
+        testingType: 'automated',
+        readingLevel: readingLevel.level,
+        cognitiveLoad: 'high',
+        multimediaType: null,
+      });
+      majorCount++;
+    }
+
+    if (cognitive.score < 70) {
+      for (const issue of cognitive.issues) {
         issues.push({
           scanId,
           wcagCriteria: 'AODA - Cognitive & Reading Support',
           severity: 'major',
           category: 'Cognitive & Reading',
-          subCategory: 'Reading Level',
-          title: 'Content reading level too high',
-          description: `Content reading level (${readingLevel.level}) may be too difficult for general audiences`,
+          subCategory: 'Cognitive Load',
+          title: 'High cognitive load detected',
+          description: issue,
           element: '<body>',
-          suggestedFix: readingLevel.recommendations.join('. '),
+          suggestedFix: cognitive.recommendations.join('. '),
           impact: 'serious',
-          helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/reading-level.html',
+          helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/consistent-navigation.html',
           testingType: 'automated',
-          readingLevel: readingLevel.level,
+          readingLevel: null,
           cognitiveLoad: 'high',
           multimediaType: null,
         });
         majorCount++;
       }
-
-      // Add cognitive load issues
-      if (cognitive.score < 70) {
-        for (const issue of cognitive.issues) {
-          issues.push({
-            scanId,
-            wcagCriteria: 'AODA - Cognitive & Reading Support',
-            severity: 'major',
-            category: 'Cognitive & Reading',
-            subCategory: 'Cognitive Load',
-            title: 'High cognitive load detected',
-            description: issue,
-            element: '<body>',
-            suggestedFix: cognitive.recommendations.join('. '),
-            impact: 'serious',
-            helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/consistent-navigation.html',
-            testingType: 'automated',
-            readingLevel: null,
-            cognitiveLoad: 'high',
-            multimediaType: null,
-          });
-          majorCount++;
-        }
-      }
-
-      // Add multimedia issues
-      if (multimedia.score < 80) {
-        for (const issue of multimedia.issues) {
-          issues.push({
-            scanId,
-            wcagCriteria: 'AODA - Multimedia Accessibility',
-            severity: 'major',
-            category: 'Multimedia',
-            subCategory: 'Audio/Video Content',
-            title: 'Multimedia accessibility issue',
-            description: issue,
-            element: '<video>, <audio>',
-            suggestedFix: 'Provide comprehensive multimedia alternatives including captions, transcripts, audio descriptions, and sign language interpretation',
-            impact: 'serious',
-            helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html',
-            testingType: 'automated',
-            readingLevel: null,
-            cognitiveLoad: null,
-            multimediaType: multimedia.hasVideo ? 'video' : 'audio',
-          });
-          majorCount++;
-        }
-      }
-
-      // Add navigation issues
-      if (navigation.score < 80) {
-        for (const issue of navigation.issues) {
-          issues.push({
-            scanId,
-            wcagCriteria: 'WCAG 2.1 AAA - Enhanced Navigation',
-            severity: 'major',
-            category: 'Enhanced Navigation',
-            subCategory: 'Keyboard Support',
-            title: 'Navigation accessibility issue',
-            description: issue,
-            element: '<nav>, <main>',
-            suggestedFix: 'Implement comprehensive keyboard navigation support with skip links, consistent navigation patterns, and custom shortcuts',
-            impact: 'serious',
-            helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/bypass-blocks.html',
-            testingType: 'automated',
-            readingLevel: null,
-            cognitiveLoad: null,
-            multimediaType: null,
-          });
-          majorCount++;
-        }
-      }
-
-      // Save all issues
-      for (const issue of issues) {
-        await storage.createIssue(issue);
-      }
-
-      // Calculate comprehensive scores
-      const totalIssues = issues.length;
-      const baseScore = Math.max(0, Math.round(100 - (criticalCount * 10 + majorCount * 5 + minorCount * 2)));
-      const readingScore = Math.max(0, readingLevel.score / 100 * 100);
-      const overallScore = Math.round((baseScore + readingScore + cognitive.score + multimedia.score + navigation.score) / 5);
-
-      // Determine enhanced compliance level
-      let complianceLevel: 'A' | 'AA' | 'AAA' | 'AODA' | 'none' = 'none';
-      if (criticalCount === 0 && majorCount === 0 && overallScore >= 95) {
-        complianceLevel = 'AODA';
-      } else if (criticalCount === 0 && majorCount === 0 && overallScore >= 90) {
-        complianceLevel = 'AAA';
-      } else if (criticalCount === 0 && overallScore >= 80) {
-        complianceLevel = 'AA';
-      } else if (criticalCount <= 2 && overallScore >= 70) {
-        complianceLevel = 'A';
-      }
-
-      // Update scan with comprehensive results
-      await storage.updateScan(scanId, {
-        status: 'completed',
-        overallScore,
-        complianceLevel,
-        totalIssues,
-        criticalIssues: criticalCount,
-        majorIssues: majorCount,
-        minorIssues: minorCount,
-        readingLevel: readingLevel.level,
-        cognitiveScore: cognitive.score,
-        multimediaScore: multimedia.score,
-        navigationScore: navigation.score,
-        completedAt: new Date(),
-      });
-
-    } catch (error) {
-      console.error('Advanced scan failed:', error);
-      await storage.updateScan(scanId, { 
-        status: 'failed',
-        completedAt: new Date(),
-      });
-      throw error;
     }
+
+    if (multimedia.score < 80) {
+      for (const issue of multimedia.issues) {
+        issues.push({
+          scanId,
+          wcagCriteria: 'AODA - Multimedia Accessibility',
+          severity: 'major',
+          category: 'Multimedia',
+          subCategory: 'Audio/Video Content',
+          title: 'Multimedia accessibility issue',
+          description: issue,
+          element: '<video>, <audio>',
+          suggestedFix:
+            'Provide comprehensive multimedia alternatives including captions, transcripts, audio descriptions, and sign language interpretation',
+          impact: 'serious',
+          helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html',
+          testingType: 'automated',
+          readingLevel: null,
+          cognitiveLoad: null,
+          multimediaType: multimedia.hasVideo ? 'video' : 'audio',
+        });
+        majorCount++;
+      }
+    }
+
+    if (navigation.score < 80) {
+      for (const issue of navigation.issues) {
+        issues.push({
+          scanId,
+          wcagCriteria: 'WCAG 2.1 AAA - Enhanced Navigation',
+          severity: 'major',
+          category: 'Enhanced Navigation',
+          subCategory: 'Keyboard Support',
+          title: 'Navigation accessibility issue',
+          description: issue,
+          element: '<nav>, <main>',
+          suggestedFix:
+            'Implement comprehensive keyboard navigation support with skip links, consistent navigation patterns, and custom shortcuts',
+          impact: 'serious',
+          helpUrl: 'https://www.w3.org/WAI/WCAG21/Understanding/bypass-blocks.html',
+          testingType: 'automated',
+          readingLevel: null,
+          cognitiveLoad: null,
+          multimediaType: null,
+        });
+        majorCount++;
+      }
+    }
+
+    // Save issues
+    for (const issue of issues) {
+      await storage.createIssue(issue);
+    }
+
+    // Compute scores
+    const totalIssues = issues.length;
+    const baseScore = Math.max(0, Math.round(100 - (criticalCount * 10 + majorCount * 5 + minorCount * 2)));
+    const readingScore = Math.max(0, readingLevel.score);
+    // const overallScore = Math.round((baseScore + readingScore + cognitive.score + multimedia.score + navigation.score) / 5);
+
+  //   const overallScore = Math.round(
+  //   baseScore * 0.4 +
+  //   readingScore * 0.15 +
+  //   cognitive.score * 0.15 +
+  //   multimedia.score * 0.15 +
+  //   navigation.score * 0.15
+  //  );
+
+  let weights = { base: 0.4, reading: 0, cognitive: 0, multimedia: 0, navigation: 0 };
+if (doCognitive) {
+  weights.reading = 0.15;
+  weights.cognitive = 0.15;
+}
+if (doMultimedia) weights.multimedia = 0.15;
+if (doNavigation) weights.navigation = 0.15;
+
+// Normalize weights to sum to 1
+const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+if (totalWeight < 1) weights.base += 1 - totalWeight;
+
+const overallScore = Math.round(
+  baseScore * weights.base +
+  readingScore * weights.reading +
+  cognitive.score * weights.cognitive +
+  multimedia.score * weights.multimedia +
+  navigation.score * weights.navigation
+);
+
+
+    console.log("----DEBUG COMPLIANCE LEVEL----", {
+      criticalCount, majorCount, minorCount, overallScore
+    });
+
+    // Compliance level
+    // let complianceLevel: 'A' | 'AA' | 'AAA' | 'AODA' | 'COGNITIVE' | 'MULTIMEDIA' | 'none' = 'none';
+    // if (criticalCount === 0 && majorCount === 0 && overallScore >= 80) { //95
+    //   complianceLevel = 'AODA';
+    // } else if (criticalCount === 0 && majorCount <=1 && overallScore >= 75) { // 90 88
+    //   complianceLevel = 'AAA';
+    // } else if (criticalCount === 0 && overallScore >= 60) { // 80
+    //   complianceLevel = 'AA';
+    // } else if (criticalCount <= 2 && overallScore >= 50) {
+    //   complianceLevel = 'A';
+    // }else {
+    //   complianceLevel = 'none';
+    // }
+
+    // Compliance level
+let complianceLevel: 'A' | 'AA' | 'AAA' | 'AODA' | 'COGNITIVE' | 'MULTIMEDIA' | 'none' = 'none';
+
+// Check for specific levels first if they were selected
+if (levels.includes('COGNITIVE') && criticalCount === 0 && majorCount === 0 && overallScore >= 80 && cognitive.score >= 80 && readingLevel.score >= 80) {
+  complianceLevel = 'COGNITIVE';
+} else if (levels.includes('MULTIMEDIA') && criticalCount === 0 && majorCount === 0 && overallScore >= 80 && multimedia.score >= 80) {
+  complianceLevel = 'MULTIMEDIA';
+} 
+// Then hierarchical WCAG/AODA checks (if not already set to specific)
+else if (criticalCount === 0 && majorCount === 0 && overallScore >= 80) {
+  complianceLevel = doAODA ? 'AODA' : 'none'; // Only set AODA if selected
+} else if (criticalCount === 0 && majorCount <= 1 && overallScore >= 75) {
+  complianceLevel = levels.includes('AAA') ? 'AAA' : 'none';
+} else if (criticalCount === 0 && overallScore >= 60) {
+  complianceLevel = levels.includes('AA') ? 'AA' : 'none';
+} else if (criticalCount <= 2 && overallScore >= 50) {
+  complianceLevel = levels.includes('A') ? 'A' : 'none';
+} else {
+  complianceLevel = 'none';
+}
+
+// If multiple specific levels pass, prioritize (e.g., append or choose highest; here we choose one for simplicity)
+if (complianceLevel === 'none' && levels.includes('COGNITIVE') && cognitive.score >= 70 && readingLevel.score >= 60) {
+  complianceLevel = 'COGNITIVE'; // Fallback for partial pass
+} else if (complianceLevel === 'none' && levels.includes('MULTIMEDIA') && multimedia.score >= 80) {
+  complianceLevel = 'MULTIMEDIA';
+}
+
+
+    // Update scan
+    await storage.updateScan(scanId, {
+      status: 'completed',
+      overallScore,
+      complianceLevel,
+      totalIssues,
+      criticalIssues: criticalCount,
+      majorIssues: majorCount,
+      minorIssues: minorCount,
+      // readingLevel: readingLevel.level,
+      // cognitiveScore: cognitive.score,
+      // multimediaScore: multimedia.score,
+      // navigationScore: navigation.score,
+      readingLevel: doCognitive ? readingLevel.level : null,
+      cognitiveScore: doCognitive ? cognitive.score : null,
+      multimediaScore: doMultimedia ? multimedia.score : null,
+      navigationScore: doNavigation ? navigation.score : null,
+      completedAt: new Date(),
+    });
+    
+     
+  } catch (error) {
+    console.error('Advanced scan failed:', error);
+
+    await storage.updateScan(scanId, {
+      status: 'failed',
+      completedAt: new Date(),
+    });
+
+    // close browser if still open
+    if (browser) await browser.close();
   }
 }
+}
+
+  
 
 export const advancedScanner = new AdvancedAccessibilityScanner();

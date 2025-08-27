@@ -1,4 +1,17 @@
-import { scans, issues, type Scan, type InsertScan, type Issue, type InsertIssue } from "@shared/schema";
+import {
+  scans,
+  issues,
+  type Scan,
+  type InsertScan,
+  type Issue,
+  type InsertIssue,
+} from "@shared/schema";
+import db from "@shared/db";
+import { eq } from "drizzle-orm";
+import { desc } from "drizzle-orm";
+import { users } from "@shared/schema";
+import { InsertUser, User } from "@shared/schema";
+import { reports, InsertReport } from "@shared/schema";
 
 export interface IStorage {
   // Scan operations
@@ -6,11 +19,18 @@ export interface IStorage {
   getScan(id: number): Promise<Scan | undefined>;
   updateScan(id: number, updates: Partial<Scan>): Promise<Scan | undefined>;
   getAllScans(): Promise<Scan[]>;
-  
+
   // Issue operations
   createIssue(issue: InsertIssue): Promise<Issue>;
   getIssuesByScanId(scanId: number): Promise<Issue[]>;
   deleteIssuesByScanId(scanId: number): Promise<void>;
+  
+  //Report operations
+  createReport(data: InsertReport): Promise<InsertReport>;
+  getReportByScanId(scanId: number): Promise<InsertReport | undefined>;
+  getReportsByUserId(userId: string): Promise<InsertReport[]>;
+  getReportsByScanId(scanId: number): Promise<InsertReport[]>
+  updateReport(scanId: number, updates: Partial<InsertReport>): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -18,99 +38,135 @@ export class MemStorage implements IStorage {
   private issues: Map<number, Issue>;
   private currentScanId: number;
   private currentIssueId: number;
+  private reports: Map<number, InsertReport>;
+  private currentReportId: number;
 
   constructor() {
     this.scans = new Map();
     this.issues = new Map();
+    this.reports = new Map();
     this.currentScanId = 1;
     this.currentIssueId = 1;
+    this.currentReportId = 1;
   }
 
   async createScan(insertScan: InsertScan): Promise<Scan> {
-    const id = this.currentScanId++;
-    const scan: Scan = {
-      id,
-      url: insertScan.url,
-      scanLevels: Array.isArray(insertScan.scanLevels) ? insertScan.scanLevels : [],
-      status: "pending",
-      overallScore: null,
-      complianceLevel: null,
-      totalIssues: 0,
-      criticalIssues: 0,
-      majorIssues: 0,
-      minorIssues: 0,
-      readingLevel: null,
-      cognitiveScore: null,
-      multimediaScore: null,
-      navigationScore: null,
-      createdAt: new Date(),
-      completedAt: null,
-    };
-    this.scans.set(id, scan);
+    const [scan] = await db
+      .insert(scans)
+      .values({
+        url: insertScan.url,
+        scanLevels: Array.isArray(insertScan.scanLevels)
+          ? insertScan.scanLevels
+          : [],
+        status: "pending",
+        overallScore: null,
+        complianceLevel: null,
+        totalIssues: 0,
+        criticalIssues: 0,
+        majorIssues: 0,
+        minorIssues: 0,
+        readingLevel: null,
+        cognitiveScore: null,
+        multimediaScore: null,
+        navigationScore: null,
+        createdAt: new Date(),
+        completedAt: null,
+      })
+      .returning(); // ✅ this is required to get back the inserted row
+
+    // console.log("Scan created:", scan);
     return scan;
   }
 
   async getScan(id: number): Promise<Scan | undefined> {
-    return this.scans.get(id);
+    const [scan] = await db.select().from(scans).where(eq(scans.id, id));
+    return scan;
   }
 
-  async updateScan(id: number, updates: Partial<Scan>): Promise<Scan | undefined> {
-    const scan = this.scans.get(id);
-    if (!scan) return undefined;
-    
-    const updatedScan = { ...scan, ...updates };
-    this.scans.set(id, updatedScan);
-    return updatedScan;
+  async updateScan(id: number, updates: Partial<Scan>): Promise<void> {
+    await db.update(scans).set(updates).where(eq(scans.id, id));
   }
 
+ async getReportsByScanId(scanId: number): Promise<InsertReport[]> {
+    return await db.select().from(reports).where(eq(reports.scanId, scanId));
+  }
+
+  async updateReport(
+    scanId: number,
+    updates: Partial<InsertReport>
+  ): Promise<void> {
+    await db.update(reports).set(updates).where(eq(reports.scanId, scanId));
+  }
+
+  // Get all scans from DB
   async getAllScans(): Promise<Scan[]> {
-    return Array.from(this.scans.values()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return await db.select().from(scans).orderBy(desc(scans.createdAt));
   }
 
+  // Create issue in DB
   async createIssue(insertIssue: InsertIssue): Promise<Issue> {
-    const id = this.currentIssueId++;
-    const issue: Issue = { 
-      id,
-      scanId: insertIssue.scanId,
-      wcagCriteria: insertIssue.wcagCriteria,
-      severity: insertIssue.severity,
-      category: insertIssue.category,
-      subCategory: insertIssue.subCategory || null,
-      title: insertIssue.title,
-      description: insertIssue.description,
-      element: insertIssue.element || null,
-      suggestedFix: insertIssue.suggestedFix || null,
-      impact: insertIssue.impact || null,
-      helpUrl: insertIssue.helpUrl || null,
-      testingType: insertIssue.testingType || null,
-      readingLevel: insertIssue.readingLevel || null,
-      cognitiveLoad: insertIssue.cognitiveLoad || null,
-      multimediaType: insertIssue.multimediaType || null,
-    };
-    this.issues.set(id, issue);
+    const [issue] = await db.insert(issues).values(insertIssue).returning();
     return issue;
   }
 
+  // Get issues by scanId from DB
   async getIssuesByScanId(scanId: number): Promise<Issue[]> {
-    return Array.from(this.issues.values())
-      .filter(issue => issue.scanId === scanId)
-      .sort((a, b) => {
-        const severityOrder = { critical: 3, major: 2, minor: 1 };
-        return severityOrder[b.severity] - severityOrder[a.severity];
-      });
+    return await db.select().from(issues).where(eq(issues.scanId, scanId));
   }
 
+  // Delete issues by scanId from DB
   async deleteIssuesByScanId(scanId: number): Promise<void> {
-    const idsToDelete: number[] = [];
-    this.issues.forEach((issue, id) => {
-      if (issue.scanId === scanId) {
-        idsToDelete.push(id);
-      }
-    });
-    for (const id of idsToDelete) {
-      this.issues.delete(id);
-    }
+    await db.delete(issues).where(eq(issues.scanId, scanId));
   }
 }
+export async function createUser(data: InsertUser): Promise<User> {
+  const [user] = await db.insert(users).values(data).returning();
+  return user;
+}
+
+// Get user by email
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.email, email));
+  return user;
+}
+// Get user by ID
+export async function getUserById(id: number): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.id, id));
+  return user;
+}
+
+export async function createReport(data: InsertReport) {
+  return await db.insert(reports).values(data).returning();
+}
+
+export async function saveReportToDatabase({
+  userId,
+  scanId,
+  pdfContent,
+}: {
+  userId: string;
+  scanId: number;
+  pdfContent: string;
+}) {
+  await db.insert(reports).values({
+    userId,
+    scanId,
+    pdfContent,
+  });
+}
+
+export async function getReportsByUserId(userId: string): Promise<InsertReport[]> {
+  return await db
+    .select()
+    .from(reports)
+    .where(eq(reports.userId, userId))
+    .orderBy(desc(reports.createdAt));
+}
+
+export async function getReportByScanId(scanId: number): Promise<InsertReport | undefined> {
+  const [report] = await db.select().from(reports).where(eq(reports.scanId, scanId));
+  return report;
+}
+
 
 export const storage = new MemStorage();

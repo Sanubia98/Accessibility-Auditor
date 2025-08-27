@@ -1,80 +1,241 @@
 import PDFDocument from 'pdfkit';
 import { storage } from '../storage';
-import { type Scan, type Issue } from '@shared/schema';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export class ReportGenerator {
   async generatePDFReport(scanId: number): Promise<Buffer> {
     const scan = await storage.getScan(scanId);
-    if (!scan) {
-      throw new Error('Scan not found');
-    }
-
+    if (!scan) throw new Error('Scan not found');
     const issues = await storage.getIssuesByScanId(scanId);
-    
-    const doc = new PDFDocument();
+
+    const doc = new PDFDocument({ size: 'A4', margin: 0 });
     const chunks: Buffer[] = [];
+    doc.on('data', (c) => chunks.push(c));
 
-    doc.on('data', chunk => chunks.push(chunk));
-    
     return new Promise((resolve, reject) => {
-      doc.on('end', () => {
-        resolve(Buffer.concat(chunks));
-      });
-
       doc.on('error', reject);
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-      // Header
-      doc.fontSize(20).text('Robonito Accessibility Scanner Report', { align: 'center' });
-      doc.moveDown();
+      /* === CONSTANTS === */
+      const marginTop = 100;
+      const marginBottom = 40;
+      const marginLeft = 50;
+      const marginRight = 50;
+      const usableWidth = doc.page.width - marginLeft - marginRight;
+      let pageNo = 1;
 
-      // Scan details
-      doc.fontSize(14).text(`Website: ${scan.url}`);
-      doc.text(`Scan Date: ${scan.createdAt.toLocaleDateString()}`);
-      doc.text(`Overall Score: ${scan.overallScore}%`);
-      doc.text(`Compliance Level: ${scan.complianceLevel}`);
-      doc.moveDown();
+      const headerLogoPath = join(__dirname, '../../client/public/robonito-blue.png');
+      const watermarkPath  = join(__dirname, '../../client/public/favicon.png');
+      const SummaryIcon = join(__dirname, '../../client/public/icons/summary.png');
 
-      // Summary
-      doc.fontSize(16).text('Summary', { underline: true });
-      doc.fontSize(12)
-        .text(`Total Issues: ${scan.totalIssues}`)
-        .text(`Critical Issues: ${scan.criticalIssues}`)
-        .text(`Major Issues: ${scan.majorIssues}`)
-        .text(`Minor Issues: ${scan.minorIssues}`);
-      doc.moveDown();
+      /* === COLORS === */
+      const headerText   = '#000000';
+      const labelColor   = '#000000';
+      const valueColor   = '#0B3D91'; // navy blue
+      const cardStroke   = '#000000';
 
-      // Issues breakdown
-      if (issues.length > 0) {
-        doc.fontSize(16).text('Detailed Issues', { underline: true });
-        
-        issues.forEach((issue, index) => {
-          if (doc.y > 700) {
-            doc.addPage();
-          }
-          
-          doc.fontSize(12);
-          doc.text(`${index + 1}. ${issue.title}`, { continued: false });
-          doc.fontSize(10);
-          doc.text(`Severity: ${issue.severity.toUpperCase()}`, { indent: 20 });
-          doc.text(`WCAG Criteria: ${issue.wcagCriteria}`, { indent: 20 });
-          doc.text(`Category: ${issue.category}`, { indent: 20 });
-          doc.text(`Description: ${issue.description}`, { indent: 20 });
-          
-          if (issue.element) {
-            doc.text(`Element: ${issue.element.substring(0, 100)}...`, { indent: 20 });
-          }
-          
-          if (issue.suggestedFix) {
-            doc.text(`Suggested Fix: ${issue.suggestedFix}`, { indent: 20 });
-          }
-          
-          doc.moveDown(0.5);
+      const watermarkWidth = doc.page.width * 0.7;   // increase size (70% of page width)
+      const watermarkHeight = doc.page.height * 0.7; // increase size (70% of page height)
+
+      // Calculate center positions
+     const x = (doc.page.width - watermarkWidth) / 2;
+     const Y = (doc.page.height - watermarkHeight) / 2;
+
+      /* === HELPERS === */
+      const addHeader = () => {
+        try {
+          doc.image(headerLogoPath, (doc.page.width - 120) / 2, 10, { width: 120 });
+        } catch { /* logo missing */ }
+
+        doc
+          .font('Times-Bold')
+          .fontSize(18)
+          .fillColor(headerText)
+          .text('Robonito Accessibility Scanner Report', 0, 65, {
+            align: 'center',
+            width: doc.page.width,
+          });
+
+        doc.moveTo(40, 90).lineTo(doc.page.width - 40, 90).stroke();
+      };
+
+      const addFooter = () => {
+        try {
+          doc.save().opacity(0.15);
+          // doc.image(
+          //   watermarkPath,
+          //   doc.page.width / 4,
+          //   doc.page.height / 3,
+          //   { width: doc.page.width / 2, height: doc.page.width / 2 }
+          // );
+          doc.image(watermarkPath, x, Y, {
+          width: watermarkWidth,
+          height: watermarkHeight
+          })
+         
+          doc.restore();
+        } catch { /* watermark missing */ }
+
+        doc
+          .font('Times-Roman')
+          .fontSize(10)
+          .fillColor('black')
+          .text(
+            `Page ${pageNo++} | Generated By Robonito Accessibility Scanner on ${new Date().toLocaleDateString()}`,
+             0,
+            doc.page.height - 40,
+            { align: 'center', width: doc.page.width }
+          );
+      };
+
+      const checkPage = (needed: number) => {
+        if (y + needed > doc.page.height - marginBottom - 20) {
+          doc.addPage();
+          addHeader();
+          addFooter();
+          y = marginTop + 20;
+        }
+      };
+
+      /* === FIRST PAGE === */
+      addHeader();
+      addFooter();
+
+      let y = marginTop + 20;
+
+      /* === SCAN DETAILS === */
+      doc
+        .font('Times-Bold')
+        .fontSize(16)
+        .fillColor(headerText)
+        .text('Scan Details', marginLeft, y);
+      y += 25;
+
+      doc.fontSize(11);
+      [
+        ['Website',          scan.url],
+        ['Scan Date',        scan.createdAt.toLocaleDateString()],
+        ['Overall Score',    `${scan.overallScore}%`],
+        ['Compliance Level', scan.complianceLevel],
+      ].forEach(([label, value]) => {
+        doc
+          .font('Times-Roman')
+          .fillColor(labelColor)
+          .text(label + ':', marginLeft, y, { continued: true })
+          .fillColor(valueColor)
+          .text(' ' + value, { continued: false });
+        y += 20;
+      });
+      y += 20;
+
+/* === SUMMARY === */
+  doc .font('Times-Bold')
+   .fontSize(16)
+   .fillColor(headerText)
+   .text('Summary', marginLeft, y); y += 25; doc.fontSize(11);
+    [ ['Total Issues', scan.totalIssues],
+     ['Critical Issues', scan.criticalIssues],
+     ['Major Issues', scan.majorIssues],
+     ['Minor Issues', scan.minorIssues], ].forEach(([label, value]) => {
+      doc .font('Times-Roman') .fillColor(labelColor)
+      .text(label + ':', marginLeft, y, { continued: true })
+       .fillColor(valueColor) .text(' ' + value.toString());
+        y += 20; }); 
+        y += 20;
+
+
+      /* === DETAILED ISSUES === */
+      if (!issues.length) {
+        checkPage(30);
+        doc
+          .font('Times-Bold')
+          .fontSize(14)
+          .text('No issues found.', marginLeft, y);
+        y += 30;
+      } else {
+        doc
+          .font('Times-Bold')
+          .fontSize(16)
+          .fillColor(headerText)
+          .text('Detailed Issues', marginLeft, y);
+        y += 25;
+
+        const labelWidth = 130;
+        const valueWidth = usableWidth - labelWidth;
+        const tableX = marginLeft;
+
+        issues.forEach((iss, idx) => {
+          const rows = [
+            ['Severity:', iss.severity || '—'],
+            ['WCAG Criteria:', iss.wcagCriteria || '—'],
+            ['Category:', iss.category || '—'],
+            ['Description:', iss.description || '—'],
+            ['Element:', iss.element || '—'],
+            ['Suggested Fix:', iss.suggestedFix || '—']
+          ];
+
+          let totalHeight = 25;
+          rows.forEach(([label, value]) => {
+            const valueHeight = doc
+              .font('Times-Roman')
+              .fontSize(11)
+              .heightOfString(value, { width: valueWidth - 10 });
+            totalHeight += Math.max(20, valueHeight + 10);
+          });
+          totalHeight += rows.length;
+
+          checkPage(totalHeight);
+
+          doc
+            .font('Times-Bold')
+            .fontSize(12)
+            .fillColor(headerText)
+            .text(`${idx + 1}. ${iss.title || '—'}`, marginLeft, y);
+          y += 20;
+
+          const tableTop = y;
+
+          doc.lineWidth(0.5).strokeColor(cardStroke);
+          doc.moveTo(tableX, y).lineTo(tableX + usableWidth, y).stroke();
+
+          rows.forEach(([label, value]) => {
+            const valueHeight = doc
+              .font('Times-Roman')
+              .fontSize(11)
+              .heightOfString(value, { width: valueWidth - 10 });
+            const rowHeight = Math.max(20, valueHeight + 10);
+
+            // labels normal
+            doc
+              .font('Times-Roman')
+              .fontSize(11)
+              .fillColor(labelColor)
+              .text(label, tableX + 5, y + 5, { width: labelWidth - 10 });
+
+            // values navy blue
+            doc
+              .font('Times-Roman')
+              .fontSize(11)
+              .fillColor(valueColor)
+              .text(value, tableX + labelWidth + 5, y + 5, { width: valueWidth - 10 });
+
+            y += rowHeight;
+
+            doc.moveTo(tableX, y).lineTo(tableX + usableWidth, y).stroke();
+          });
+
+          doc
+            .moveTo(tableX, tableTop).lineTo(tableX, y).stroke()
+            .moveTo(tableX + labelWidth, tableTop).lineTo(tableX + labelWidth, y).stroke()
+            .moveTo(tableX + usableWidth, tableTop).lineTo(tableX + usableWidth, y).stroke();
+
+          y += 20;
         });
       }
-
-      // Footer
-      doc.fontSize(8).text(`Generated by Robonito Accessibility Scanner on ${new Date().toLocaleDateString()}`, 
-        50, doc.page.height - 50, { align: 'center' });
 
       doc.end();
     });
@@ -82,3 +243,4 @@ export class ReportGenerator {
 }
 
 export const reportGenerator = new ReportGenerator();
+
